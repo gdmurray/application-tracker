@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/sashabaranov/go-openai"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
@@ -14,6 +15,56 @@ import (
 	"strings"
 )
 
+func initializeOpenAIClient() (*openai.Client, error) {
+	ctx := context.Background()
+	secretName := "projects/your-project-id/secrets/openai-api-key/versions/latest"
+	apiKey, err := getSecret(ctx, secretName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get API key from Secret Manager: %v", err)
+	}
+
+	client := openai.NewClient(string(apiKey))
+	return client, nil
+}
+func classifyEmail(client *openai.Client, emailContent string) (string, error) {
+	ctx := context.Background()
+	messages := []openai.ChatCompletionMessage{
+		{
+			Role: "system",
+			Content: "You are a system who can classify the subject, sender, " +
+				"and content of an email and be able to classify whether the email is a job application response email." +
+				"These emails are ones companies send out when you have applied for a job. You will respond in two sections, " +
+				"and the format must be consistent and parseable. The first section is the classification, which will look like this\n" +
+				"Classification: (Application Response | Other).\n" +
+				"The second section is lines of application details, which all will just say N/A if the email is not an application response email." +
+				"The information I'd like you to try to extract from the email is: Company, Role, and Date Applied." +
+				"Always list that information on a new line in that order, even if you can't find the information, then put down N/A.\n " +
+				"Example: Classification: Application Response\nCompany: Google\nRole: Software Engineer\nDate Applied: 2022-01-01\n" +
+				"Example 2: Classification: Other\nCompany: N/A\nRole: N/A\nDate Applied: N/A\n",
+		},
+		{
+			Role:    "user",
+			Content: emailContent,
+		},
+		// Add more messages as needed to provide context for the conversation
+	}
+	response, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		Model:       openai.GPT3Dot5Turbo,
+		MaxTokens:   100,
+		Temperature: 0.5,
+		Messages:    messages,
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("error creating chat completion: %w", err)
+	}
+
+	if len(response.Choices) > 0 && response.Choices[0].Message.Content != "" {
+		return response.Choices[0].Message.Content, nil
+	}
+
+	return "", fmt.Errorf("no completion choices returned")
+}
 func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (string, error) {
 	// Retrieve the email message
 	msg, err := gmailService.Users.Messages.Get(userId, messageId).Do()

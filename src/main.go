@@ -72,15 +72,26 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("Unable to retrieve history: %v", err)
 	}
 
+	openAiClient, err := initializeOpenAIClient()
+	if err != nil {
+		log.Fatalf("Unable to initialize openAI Client: %v", err)
+	}
+
 	for _, history := range historyList.History {
 		for _, msg := range history.Messages {
 			// Fetch each message using its ID
-			msgContent, msgErr := fetchEmailContent(gmailService, userEmail, msg.Id)
-			if msgErr != nil {
+			emailContent, emailError := fetchEmailContent(gmailService, userEmail, msg.Id)
+			if emailError != nil {
 				log.Fatalf("Unable to retrieve message %v: %v", msg.Id, err)
 			}
 			// Process the message, e.g., read its content
-			fmt.Printf("Message Content: %s\n", msgContent)
+			fmt.Printf("Message Content: %s\n", emailContent)
+			classification, err := classifyEmail(openAiClient, emailContent)
+			if err != nil {
+				log.Fatalf("Unable to classify email %v: %v", emailContent, err)
+			}
+			fmt.Printf("Classification: %s\n", classification)
+			//resp, err := openAiClient.Com
 		}
 	}
 
