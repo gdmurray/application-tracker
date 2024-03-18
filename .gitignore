@@ -132,7 +132,6 @@ Temporary Items
 credentials
 *.iml
 
-
 venv/
 .idea
 credentials/
