@@ -17,7 +17,7 @@ import (
 
 func initializeOpenAIClient() (*openai.Client, error) {
 	ctx := context.Background()
-	secretName := "projects/your-project-id/secrets/openai-api-key/versions/latest"
+	secretName := "projects/tough-mechanic-417615/secrets/openai-api-key/versions/latest"
 	apiKey, err := getSecret(ctx, secretName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get API key from Secret Manager: %v", err)
