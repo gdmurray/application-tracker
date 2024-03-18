@@ -84,11 +84,12 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 			if emailError != nil {
 				log.Fatalf("Unable to retrieve message %v: %v", msg.Id, err)
 			}
+			fullMessage := fmt.Sprintf("Subject: %s\nFrom: %s\n\n%s", emailContent.Subject, emailContent.Sender, emailContent.Message)
 			// Process the message, e.g., read its content
 			//fmt.Printf("Message Content: %s\n", emailContent)
-			classification, err := classifyEmail(openAiClient, emailContent)
+			classification, err := classifyEmail(openAiClient, fullMessage)
 			if err != nil {
-				fmt.Printf("Error classifying email %v: %v", emailContent, err)
+				fmt.Printf("Error classifying email from %v: %v", emailContent.Sender, err)
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}

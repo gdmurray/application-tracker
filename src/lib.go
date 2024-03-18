@@ -15,6 +15,12 @@ import (
 	"strings"
 )
 
+type EmailContent struct {
+	Subject string `json:"subject"`
+	Sender  string `json:"sender"`
+	Message string `json:"message"`
+}
+
 func initializeOpenAIClient() (*openai.Client, error) {
 	ctx := context.Background()
 	secretName := "projects/tough-mechanic-417615/secrets/openai-api-key/versions/latest"
@@ -65,7 +71,7 @@ func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 
 	return "", fmt.Errorf("no completion choices returned")
 }
-func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (string, error) {
+func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (EmailContent, error) {
 	// Retrieve the email message
 	msg, err := gmailService.Users.Messages.Get(userId, messageId).Do()
 	if err != nil {
@@ -106,10 +112,11 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (s
 		}
 	}
 
-	// Combine subject, sender, and message body
-	fullMessage := fmt.Sprintf("Subject: %s\nFrom: %s\n\n%s", subject, sender, messageBody)
-
-	return fullMessage, nil
+	return EmailContent{
+		Subject: subject,
+		Sender:  sender,
+		Message: messageBody,
+	}, nil
 }
 
 func getGmailService() (*gmail.Service, error) {
