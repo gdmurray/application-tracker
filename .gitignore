@@ -133,6 +133,7 @@ credentials
 *.iml
 
 venv/
+.idea
 credentials/
 .idea/*
 .DS_Store

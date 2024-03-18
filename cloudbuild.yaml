@@ -1,0 +1,13 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/tough-mechanic-417615/gmail-pubsub-app', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/tough-mechanic-417615/gmail-pubsub-app']
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'gmail-pubsub-app'
+      - '--image=gcr.io/tough-mechanic-417615/gmail-pubsub-app'
+      - '--platform=managed'
+      - '--region=us-west1'
