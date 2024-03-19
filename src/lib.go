@@ -71,11 +71,11 @@ func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 
 	return "", fmt.Errorf("no completion choices returned")
 }
-func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (EmailContent, error) {
+func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (*EmailContent, error) {
 	// Retrieve the email message
 	msg, err := gmailService.Users.Messages.Get(userId, messageId).Do()
 	if err != nil {
-		return "", fmt.Errorf("unable to retrieve message: %v", err)
+		return nil, fmt.Errorf("unable to retrieve message: %v", err)
 	}
 
 	// Extract subject and sender
@@ -95,7 +95,7 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (E
 		// If the message body is in the payload's data field (base64 encoded)
 		data, err := base64.URLEncoding.DecodeString(msg.Payload.Body.Data)
 		if err != nil {
-			return "", fmt.Errorf("error decoding message body: %v", err)
+			return nil, fmt.Errorf("error decoding message body: %v", err)
 		}
 		messageBody = string(data)
 	} else if len(msg.Payload.Parts) > 0 {
@@ -104,7 +104,7 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (E
 			if strings.HasPrefix(part.MimeType, "text/plain") {
 				data, err := base64.URLEncoding.DecodeString(part.Body.Data)
 				if err != nil {
-					return "", fmt.Errorf("error decoding message body: %v", err)
+					return nil, fmt.Errorf("error decoding message body: %v", err)
 				}
 				messageBody = string(data)
 				break // Stop after finding the first plain text part
@@ -112,7 +112,7 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (E
 		}
 	}
 
-	return EmailContent{
+	return &EmailContent{
 		Subject: subject,
 		Sender:  sender,
 		Message: messageBody,

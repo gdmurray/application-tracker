@@ -51,7 +51,7 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Received message: %s with attributes: %v\n", data, m.Message.Attributes)
+	fmt.Printf("\nReceived message: %s with attributes: %v\n", data, m.Message.Attributes)
 	// Here, you can process the message (e.g., update a database, perform an operation, etc.)
 
 	var emailData EmailData
@@ -78,6 +78,7 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, history := range historyList.History {
+		fmt.Printf("Found %v messages in history\n", len(history.Messages))
 		for _, msg := range history.Messages {
 			// Fetch each message using its ID
 			emailContent, emailError := fetchEmailContent(gmailService, userEmail, msg.Id)
