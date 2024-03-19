@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"google.golang.org/api/gmail/v1"
 	"log"
@@ -19,7 +20,24 @@ type PubSubMessage struct {
 	Subscription string `json:"subscription,omitempty"`
 }
 
+type EmailData struct {
+	EmailAddress string `json:"emailAddress"`
+	HistoryID    uint64 `json:"historyId"`
+}
+
 func main() {
+	// Define a flag for script runs with default value false
+	runScript := flag.Bool("T", false, "Run the script")
+
+	// Parse command-line flags
+	flag.Parse()
+
+	// If the flag "runScript" is provided, execute the script
+	if *runScript {
+		testClassification()
+		return
+	}
+
 	http.HandleFunc("/message", handlePubSubMessage)
 	http.HandleFunc("/refresh", handleTokenRefresh)
 
@@ -28,11 +46,6 @@ func main() {
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		fmt.Printf("Failed to start server: %v\n", err)
 	}
-}
-
-type EmailData struct {
-	EmailAddress string `json:"emailAddress"`
-	HistoryID    uint64 `json:"historyId"`
 }
 
 func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
@@ -87,15 +100,26 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 				log.Fatalf("Unable to retrieve message %v: %v", msg.Id, err)
 			}
 			fullMessage := fmt.Sprintf("Subject: %s\nFrom: %s\n\n%s", emailContent.Subject, emailContent.Sender, emailContent.Message)
+
 			// Process the message, e.g., read its content
-			//fmt.Printf("Message Content: %s\n", emailContent)
-			classification, err := classifyEmail(openAiClient, fullMessage)
+			response, err := classifyEmail(openAiClient, fullMessage)
 			if err != nil {
 				fmt.Printf("Error classifying email from %v: %v", emailContent.Sender, err)
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-			fmt.Printf("Classification: %s\n", classification)
+
+			classification := handleOpenAiResponse(response)
+
+			if classification.DateApplied == "N/A" {
+				classification.DateApplied = emailContent.Date
+			}
+
+			fmt.Printf("Classification: %v\n", classification)
+
+			if classification.Classification == "Application Response" {
+				insertApplicationIntoSpreadsheet(&classification)
+			}
 			//resp, err := openAiClient.Com
 		}
 	}

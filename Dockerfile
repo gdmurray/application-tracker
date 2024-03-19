@@ -4,8 +4,6 @@ FROM golang:1.22 as builder
 # Copy local code to the container image.
 WORKDIR /app
 COPY . .
-# Copy files from src folder to container
-COPY src/ .
 
 # Build the binary.
 RUN CGO_ENABLED=0 GOOS=linux go build -v -o server

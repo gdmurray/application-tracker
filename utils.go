@@ -11,14 +11,17 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
+	"google.golang.org/api/sheets/v4"
 	"log"
 	"strings"
+	"time"
 )
 
 type EmailContent struct {
 	Subject string `json:"subject"`
 	Sender  string `json:"sender"`
 	Message string `json:"message"`
+	Date    string `json:"date"`
 }
 
 func initializeOpenAIClient() (*openai.Client, error) {
@@ -32,6 +35,14 @@ func initializeOpenAIClient() (*openai.Client, error) {
 	client := openai.NewClient(string(apiKey))
 	return client, nil
 }
+
+type JobApplication struct {
+	Classification string
+	Company        string
+	Role           string
+	DateApplied    string
+}
+
 func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 	ctx := context.Background()
 	messages := []openai.ChatCompletionMessage{
@@ -56,7 +67,7 @@ func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 	}
 	response, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model:       openai.GPT3Dot5Turbo,
-		MaxTokens:   100,
+		MaxTokens:   256,
 		Temperature: 0.5,
 		Messages:    messages,
 	})
@@ -70,6 +81,85 @@ func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no completion choices returned")
+}
+
+func handleOpenAiResponse(classification string) JobApplication {
+	// Split the response string by newline character
+	lines := strings.Split(classification, "\n")
+
+	// Initialize a new JobApplication object
+	application := JobApplication{
+		Classification: "Other",
+		Company:        "N/A",
+		Role:           "N/A",
+		DateApplied:    "N/A",
+	}
+
+	// Parse each line and populate the JobApplication object
+	for _, line := range lines {
+		index := strings.Index(line, ":")
+		if index != -1 {
+			key := strings.TrimSpace(line[:index])
+			value := strings.TrimSpace(line[index+1:])
+			switch key {
+			case "Classification":
+				application.Classification = value
+			case "Company":
+				application.Company = value
+			case "Role":
+				application.Role = value
+			case "Date Applied":
+				application.DateApplied = value
+			}
+		}
+	}
+
+	return application
+}
+
+func insertApplicationIntoSpreadsheet(application *JobApplication) {
+	ctx := context.Background()
+
+	secretName := "projects/tough-mechanic-417615/secrets/job-application-service-account/versions/latest"
+
+	// Load the service account key from Secret Manager
+	jsonCredentials, err := getSecret(ctx, secretName)
+	if err != nil {
+		log.Fatalf("Unable to read service account key from Secret Manager: %v", err)
+	}
+
+	// The ID of your spreadsheet (found in the spreadsheet URL)
+	spreadsheetID := "1wV4x_1D1MptyUCHxO1tHPQTgAqf-s1TywzwgaGZChCU"
+
+	// Authenticate using the service account key
+	config, err := google.JWTConfigFromJSON(jsonCredentials, sheets.SpreadsheetsScope)
+	if err != nil {
+		log.Fatalf("Unable to parse service account key file to config: %v", err)
+	}
+	client := config.Client(ctx)
+
+	// Create the Google Sheets service
+	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		log.Fatalf("Unable to retrieve Sheets client: %v", err)
+	}
+
+	var vr sheets.ValueRange
+	myValues := []interface{}{application.Company, application.Role, application.DateApplied}
+	vr.Values = append(vr.Values, myValues)
+
+	// The range to append to, e.g., "Sheet1", and the input option
+	rangeToAppend := "Applications" // Adjust the sheet name as necessary
+	valueInputOption := "USER_ENTERED"
+
+	// Append values to the spreadsheet
+	_, err = srv.Spreadsheets.Values.Append(spreadsheetID, rangeToAppend, &vr).
+		ValueInputOption(valueInputOption).Do()
+	if err != nil {
+		log.Fatalf("Unable to append data to the spreadsheet: %v", err)
+	}
+
+	log.Println("Data appended successfully.")
 }
 func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (*EmailContent, error) {
 	// Retrieve the email message
@@ -112,10 +202,14 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (*
 		}
 	}
 
+	fmt.Printf("Internal Date: %v\n", msg.InternalDate)
+	t := time.Unix(0, msg.InternalDate*int64(time.Millisecond))
+
 	return &EmailContent{
 		Subject: subject,
 		Sender:  sender,
 		Message: messageBody,
+		Date:    t.Format(time.DateOnly),
 	}, nil
 }
 
