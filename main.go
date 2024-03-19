@@ -129,6 +129,11 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTokenRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	fmt.Printf("Received request to refresh token\n")
 
 	// Create the Gmail service using the client
