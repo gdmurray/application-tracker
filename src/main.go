@@ -77,6 +77,7 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("Unable to initialize openAI Client: %v", err)
 	}
 
+	fmt.Printf("Found %v history items: %v\n", len(historyList.History), historyList.History)
 	for _, history := range historyList.History {
 		fmt.Printf("Found %v messages in history\n", len(history.Messages))
 		for _, msg := range history.Messages {
