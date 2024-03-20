@@ -119,6 +119,7 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 
 			fullMessage := fmt.Sprintf("Subject: %s\nFrom: %s\n\n%s", emailContent.Subject, emailContent.Sender, emailContent.Message)
 
+			fmt.Printf("Message Info \n%v\n%v\n\n", emailContent.Sender, emailContent.Subject)
 			// Process the message, e.g., read its content
 			response, err := classifyEmail(openAiClient, fullMessage)
 			if err != nil {
