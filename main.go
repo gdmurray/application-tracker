@@ -27,14 +27,19 @@ type EmailData struct {
 
 func main() {
 	// Define a flag for script runs with default value false
-	runScript := flag.Bool("T", false, "Run the script")
-
+	runTestClassification := flag.Bool("T", false, "Run the script")
+	runInboxScan := flag.Bool("S", false, "Scan the inbox for past emails")
 	// Parse command-line flags
 	flag.Parse()
 
 	// If the flag "runScript" is provided, execute the script
-	if *runScript {
+	if *runTestClassification {
 		testClassification()
+		return
+	}
+
+	if *runInboxScan {
+		scanPastJobApplications()
 		return
 	}
 
@@ -74,7 +79,7 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create the Gmail service using the client
-	gmailService, err := getGmailService()
+	gmailService, err := getGmailService(userEmail, false)
 	if err != nil {
 		log.Fatalf("Unable to create Gmail client: %v", err)
 	}
@@ -90,6 +95,11 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("Unable to initialize openAI Client: %v", err)
 	}
 
+	srv, err := getSheetsService(false)
+	if err != nil {
+		log.Fatalf("Unable to retrieve Sheets client: %v", err)
+	}
+
 	fmt.Printf("Found %v history items: %v\n", len(historyList.History), historyList.History)
 	for _, history := range historyList.History {
 		fmt.Printf("Found %v messages in history\n", len(history.Messages))
@@ -99,6 +109,12 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 			if emailError != nil {
 				log.Fatalf("Unable to retrieve message %v: %v", msg.Id, err)
 			}
+
+			if isAllowedSender(emailContent.Sender) == false {
+				fmt.Printf("Ignoring email from %v\n", emailContent.Sender)
+				continue
+			}
+
 			fullMessage := fmt.Sprintf("Subject: %s\nFrom: %s\n\n%s", emailContent.Subject, emailContent.Sender, emailContent.Message)
 
 			// Process the message, e.g., read its content
@@ -118,9 +134,8 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Classification: %v\n", classification)
 
 			if classification.Classification == "Application Response" {
-				insertApplicationIntoSpreadsheet(&classification)
+				insertApplicationIntoSpreadsheet(srv, &classification)
 			}
-			//resp, err := openAiClient.Com
 		}
 	}
 
@@ -136,8 +151,11 @@ func handleTokenRefresh(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Received request to refresh token\n")
 
+	// Email address of the user to impersonate
+	userEmail := "greg@gregmurray.dev"
+
 	// Create the Gmail service using the client
-	gmailService, err := getGmailService()
+	gmailService, err := getGmailService(userEmail, false)
 	if err != nil {
 		log.Fatalf("Unable to create Gmail client: %v", err)
 	}

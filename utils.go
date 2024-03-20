@@ -13,6 +13,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 	"log"
+	"os"
 	"strings"
 	"time"
 )
@@ -42,6 +43,10 @@ type JobApplication struct {
 	Role           string
 	DateApplied    string
 }
+
+const (
+	spreadsheetID = "1wV4x_1D1MptyUCHxO1tHPQTgAqf-s1TywzwgaGZChCU"
+)
 
 func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 	ctx := context.Background()
@@ -83,6 +88,35 @@ func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 	return "", fmt.Errorf("no completion choices returned")
 }
 
+func isAllowedSender(sender string) bool {
+	var excludedSenders = []string{
+		"workspace@google.com",
+		"workspace-noreply@google.com",
+		"cloud-noreply@google.com",
+		"no-reply@leetcode.com",
+		"resumeworded.com",
+		"google-workspace-alerts-noreply@google.com",
+		"gtaanm@microsoft.com",
+		"security-noreply@linkedin.com",
+		"analytics-noreply@google.com",
+		"jobscan.co",
+		"noreply@glassdoor.com",
+		"verify@crossover.com",
+		"CloudPlatform-noreply@google.com",
+		"PlatformNotifications-noreply@google.com",
+		"info@glassdoor.com",
+		"googlecloud@google.com",
+		"no-reply@accounts.google.com",
+	}
+
+	for _, s := range excludedSenders {
+		if strings.Contains(sender, s) {
+			return false
+		}
+	}
+	return true
+}
+
 func handleOpenAiResponse(classification string) JobApplication {
 	// Split the response string by newline character
 	lines := strings.Split(classification, "\n")
@@ -117,32 +151,21 @@ func handleOpenAiResponse(classification string) JobApplication {
 	return application
 }
 
-func insertApplicationIntoSpreadsheet(application *JobApplication) {
+func getSheetsService(local bool) (*sheets.Service, error) {
 	ctx := context.Background()
 
-	secretName := "projects/tough-mechanic-417615/secrets/job-application-service-account/versions/latest"
-
-	// Load the service account key from Secret Manager
-	jsonCredentials, err := getSecret(ctx, secretName)
-	if err != nil {
-		log.Fatalf("Unable to read service account key from Secret Manager: %v", err)
-	}
-
-	// The ID of your spreadsheet (found in the spreadsheet URL)
-	spreadsheetID := "1wV4x_1D1MptyUCHxO1tHPQTgAqf-s1TywzwgaGZChCU"
+	credentials := getCredentials(local)
 
 	// Authenticate using the service account key
-	config, err := google.JWTConfigFromJSON(jsonCredentials, sheets.SpreadsheetsScope)
+	config, err := google.JWTConfigFromJSON(credentials, sheets.SpreadsheetsScope)
 	if err != nil {
 		log.Fatalf("Unable to parse service account key file to config: %v", err)
 	}
 	client := config.Client(ctx)
 
-	// Create the Google Sheets service
-	srv, err := sheets.NewService(ctx, option.WithHTTPClient(client))
-	if err != nil {
-		log.Fatalf("Unable to retrieve Sheets client: %v", err)
-	}
+	return sheets.NewService(ctx, option.WithHTTPClient(client))
+}
+func insertApplicationIntoSpreadsheet(srv *sheets.Service, application *JobApplication) {
 
 	var vr sheets.ValueRange
 	myValues := []interface{}{application.Company, application.Role, application.DateApplied}
@@ -153,13 +176,53 @@ func insertApplicationIntoSpreadsheet(application *JobApplication) {
 	valueInputOption := "USER_ENTERED"
 
 	// Append values to the spreadsheet
-	_, err = srv.Spreadsheets.Values.Append(spreadsheetID, rangeToAppend, &vr).
+	_, err := srv.Spreadsheets.Values.Append(spreadsheetID, rangeToAppend, &vr).
 		ValueInputOption(valueInputOption).Do()
 	if err != nil {
 		log.Fatalf("Unable to append data to the spreadsheet: %v", err)
 	}
 
 	log.Println("Data appended successfully.")
+}
+
+func getPreviousSheetValues(srv *sheets.Service) []JobApplication {
+	readRange := "Applications!A2:C"
+
+	// Use the Sheets API to fetch values
+	resp, err := srv.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
+	if err != nil {
+		log.Fatalf("Unable to retrieve data from sheet: %v", err)
+	}
+
+	var applications []JobApplication
+
+	if len(resp.Values) == 0 {
+		fmt.Println("No data found.")
+	} else {
+		for _, row := range resp.Values {
+			// Print columns A and B, which correspond to indices 0 and 1.
+			// Check for length of row to avoid index out of range errors.
+			applications = append(applications, JobApplication{
+				Classification: "Application Response",
+				Company:        row[0].(string),
+				Role:           row[1].(string),
+				DateApplied:    row[2].(string),
+			})
+		}
+	}
+	return applications
+}
+
+// applicationExists checks if an instance of JobApplication exists in the slice.
+func applicationExists(applications []JobApplication, item JobApplication) bool {
+	for _, v := range applications {
+		if v.Company == item.Company &&
+			v.Role == item.Role &&
+			v.DateApplied == item.DateApplied {
+			return true
+		}
+	}
+	return false
 }
 func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (*EmailContent, error) {
 	// Retrieve the email message
@@ -202,7 +265,6 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (*
 		}
 	}
 
-	fmt.Printf("Internal Date: %v\n", msg.InternalDate)
 	t := time.Unix(0, msg.InternalDate*int64(time.Millisecond))
 
 	return &EmailContent{
@@ -213,12 +275,21 @@ func fetchEmailContent(gmailService *gmail.Service, userId, messageId string) (*
 	}, nil
 }
 
-func getGmailService() (*gmail.Service, error) {
+func getCredentials(local bool) []byte {
 	ctx := context.Background()
-	secretName := "projects/tough-mechanic-417615/secrets/job-application-service-account/versions/latest"
+	if local == true {
+		// Path to your service account key file
+		serviceAccountFilePath := "./credentials/tough-mechanic-417615-0e0ea07e90d0.json"
 
-	// Email address of the user to impersonate
-	userEmail := "greg@gregmurray.dev"
+		// Load the service account key from file
+		jsonCredentials, err := os.ReadFile(serviceAccountFilePath)
+		if err != nil {
+			log.Fatalf("Unable to read service account key file: %v", err)
+		}
+		return jsonCredentials
+	}
+
+	secretName := "projects/tough-mechanic-417615/secrets/job-application-service-account/versions/latest"
 
 	// Load the service account key from Secret Manager
 	jsonCredentials, err := getSecret(ctx, secretName)
@@ -226,8 +297,17 @@ func getGmailService() (*gmail.Service, error) {
 		log.Fatalf("Unable to read service account key from Secret Manager: %v", err)
 	}
 
+	return jsonCredentials
+
+}
+func getGmailService(userEmail string, local bool) (*gmail.Service, error) {
+	ctx := context.Background()
+
+	// Load the service account key from Secret Manager
+	credentials := getCredentials(local)
+
 	// Configure the JWT config for domain-wide delegation
-	config, err := google.JWTConfigFromJSON(jsonCredentials, gmail.GmailModifyScope)
+	config, err := google.JWTConfigFromJSON(credentials, gmail.GmailModifyScope)
 
 	if err != nil {
 		log.Fatalf("Unable to parse service account key to config: %v", err)
