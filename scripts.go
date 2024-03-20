@@ -103,7 +103,7 @@ func scanPastJobApplications() {
 		log.Fatalf("Unable to retrieve Sheets client: %v", err)
 	}
 
-	applications := getPreviousSheetValues(srv)
+	applications := getPreviousApplications(srv)
 	fmt.Printf("Found %v applications\n", len(applications))
 
 	for _, part := range messages.Messages {

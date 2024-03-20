@@ -185,7 +185,7 @@ func insertApplicationIntoSpreadsheet(srv *sheets.Service, application *JobAppli
 	log.Println("Data appended successfully.")
 }
 
-func getPreviousSheetValues(srv *sheets.Service) []JobApplication {
+func getPreviousApplications(srv *sheets.Service) []JobApplication {
 	readRange := "Applications!A2:C"
 
 	// Use the Sheets API to fetch values

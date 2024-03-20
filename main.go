@@ -100,6 +100,8 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("Unable to retrieve Sheets client: %v", err)
 	}
 
+	applications := getPreviousApplications(srv)
+
 	fmt.Printf("Found %v history items: %v\n", len(historyList.History), historyList.History)
 	for _, history := range historyList.History {
 		fmt.Printf("Found %v messages in history\n", len(history.Messages))
@@ -132,6 +134,10 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 			}
 
 			fmt.Printf("Classification: %v\n", classification)
+
+			if applicationExists(applications, classification) == true {
+				continue
+			}
 
 			if classification.Classification == "Application Response" {
 				insertApplicationIntoSpreadsheet(srv, &classification)
