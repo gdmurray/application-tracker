@@ -10,10 +10,10 @@ import (
 
 func testClassification() {
 	// Get the value of the environment variable
-	apiKey := os.Getenv("OPENAI_API_KEY")
+	apiKey := getEnvironmentVariable("OPENAI_API_KEY")
 
 	// Email address of the user to impersonate
-	userEmail := "greg@gregmurray.dev"
+	userEmail := getEnvironmentVariable("USER_EMAIL")
 
 	// Create the Gmail service
 	gmailService, err := getGmailService(userEmail, true)
@@ -76,7 +76,7 @@ func scanPastJobApplications() {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 
 	//Email address of the user to impersonate
-	userEmail := "greg@gregmurray.dev"
+	userEmail := getEnvironmentVariable("USER_EMAIL")
 
 	// Create the Gmail service
 	gmailService, err := getGmailService(userEmail, true)

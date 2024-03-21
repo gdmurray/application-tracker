@@ -61,7 +61,7 @@ func handlePubSubMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Email address of the user to impersonate
-	userEmail := "greg@gregmurray.dev"
+	userEmail := getEnvironmentVariable("USER_EMAIL")
 
 	data, err := base64.StdEncoding.DecodeString(m.Message.Data)
 	if err != nil {
@@ -159,7 +159,7 @@ func handleTokenRefresh(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received request to refresh token\n")
 
 	// Email address of the user to impersonate
-	userEmail := "greg@gregmurray.dev"
+	userEmail := getEnvironmentVariable("USER_EMAIL")
 
 	// Create the Gmail service using the client
 	gmailService, err := getGmailService(userEmail, false)
@@ -167,9 +167,11 @@ func handleTokenRefresh(w http.ResponseWriter, r *http.Request) {
 		log.Fatalf("Unable to create Gmail client: %v", err)
 	}
 
+	topicName := getEnvironmentVariable("PUBSUB_TOPIC_NAME")
+
 	// Set up the watch request on the user's Gmail account
 	watchRequest := &gmail.WatchRequest{
-		TopicName:         "projects/tough-mechanic-417615/topics/gmail-notifications",
+		TopicName:         topicName,
 		LabelIds:          []string{"INBOX"},
 		LabelFilterAction: "include",
 	}

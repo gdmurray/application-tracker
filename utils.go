@@ -27,7 +27,8 @@ type EmailContent struct {
 
 func initializeOpenAIClient() (*openai.Client, error) {
 	ctx := context.Background()
-	secretName := "projects/tough-mechanic-417615/secrets/openai-api-key/versions/latest"
+	secretsPath := getEnvironmentVariable("SECRETS_PATH")
+	secretName := fmt.Sprintf("%s/%s", secretsPath, "openai-api-key/versions/latest")
 	apiKey, err := getSecret(ctx, secretName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get API key from Secret Manager: %v", err)
@@ -44,9 +45,13 @@ type JobApplication struct {
 	DateApplied    string
 }
 
-const (
-	spreadsheetID = "1wV4x_1D1MptyUCHxO1tHPQTgAqf-s1TywzwgaGZChCU"
-)
+func getEnvironmentVariable(key string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		log.Fatalf("Environment variable %s is not set", key)
+	}
+	return value
+}
 
 func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 	ctx := context.Background()
@@ -89,25 +94,8 @@ func classifyEmail(client *openai.Client, emailContent string) (string, error) {
 }
 
 func isAllowedSender(sender string) bool {
-	var excludedSenders = []string{
-		"workspace@google.com",
-		"workspace-noreply@google.com",
-		"cloud-noreply@google.com",
-		"no-reply@leetcode.com",
-		"resumeworded.com",
-		"google-workspace-alerts-noreply@google.com",
-		"gtaanm@microsoft.com",
-		"security-noreply@linkedin.com",
-		"analytics-noreply@google.com",
-		"jobscan.co",
-		"noreply@glassdoor.com",
-		"verify@crossover.com",
-		"CloudPlatform-noreply@google.com",
-		"PlatformNotifications-noreply@google.com",
-		"info@glassdoor.com",
-		"googlecloud@google.com",
-		"no-reply@accounts.google.com",
-	}
+	excludedSendersString := getEnvironmentVariable("EXCLUDED_SENDERS")
+	excludedSenders := strings.Split(excludedSendersString, ",")
 
 	for _, s := range excludedSenders {
 		if strings.Contains(sender, s) {
@@ -166,13 +154,12 @@ func getSheetsService(local bool) (*sheets.Service, error) {
 	return sheets.NewService(ctx, option.WithHTTPClient(client))
 }
 func insertApplicationIntoSpreadsheet(srv *sheets.Service, application *JobApplication) {
-
+	spreadsheetID := getEnvironmentVariable("SPREADSHEET_ID")
 	var vr sheets.ValueRange
 	myValues := []interface{}{application.Company, application.Role, application.DateApplied}
 	vr.Values = append(vr.Values, myValues)
 
-	// The range to append to, e.g., "Sheet1", and the input option
-	rangeToAppend := "Applications" // Adjust the sheet name as necessary
+	rangeToAppend := getEnvironmentVariable("SPREADSHEET_NAME")
 	valueInputOption := "USER_ENTERED"
 
 	// Append values to the spreadsheet
@@ -186,7 +173,10 @@ func insertApplicationIntoSpreadsheet(srv *sheets.Service, application *JobAppli
 }
 
 func getPreviousApplications(srv *sheets.Service) []JobApplication {
-	readRange := "Applications!A2:C"
+	spreadsheetID := getEnvironmentVariable("SPREADSHEET_ID")
+	spreadsheetName := getEnvironmentVariable("SPREADSHEET_NAME")
+	spreadsheetRange := getEnvironmentVariable("SPREADSHEET_RANGE")
+	readRange := fmt.Sprintf("%s!%s", spreadsheetName, spreadsheetRange)
 
 	// Use the Sheets API to fetch values
 	resp, err := srv.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
@@ -279,7 +269,7 @@ func getCredentials(local bool) []byte {
 	ctx := context.Background()
 	if local == true {
 		// Path to your service account key file
-		serviceAccountFilePath := "./credentials/tough-mechanic-417615-0e0ea07e90d0.json"
+		serviceAccountFilePath := getEnvironmentVariable("CREDENTIALS_PATH")
 
 		// Load the service account key from file
 		jsonCredentials, err := os.ReadFile(serviceAccountFilePath)
@@ -289,7 +279,8 @@ func getCredentials(local bool) []byte {
 		return jsonCredentials
 	}
 
-	secretName := "projects/tough-mechanic-417615/secrets/job-application-service-account/versions/latest"
+	secretsPath := getEnvironmentVariable("SECRETS_PATH")
+	secretName := fmt.Sprintf("%s/%s", secretsPath, "job-application-service-account/versions/latest")
 
 	// Load the service account key from Secret Manager
 	jsonCredentials, err := getSecret(ctx, secretName)
